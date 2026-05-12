@@ -22,6 +22,7 @@ const DOCS           = env_num('DOCS', 100000);
 const DOC_SIZE       = env_num('DOC_SIZE', 256);
 const DURATION       = env_str('DURATION', '5m');
 // Rates for individual scenarios
+const WELCOME_RATE   = env_num('WELCOME_RATE', 1000);
 const GET_RATE       = env_num('GET_RATE', 1000);
 const INSERT_RATE    = env_num('INSERT_RATE', 100);
 const UPDATE_RATE    = env_num('UPDATE_RATE', 100);

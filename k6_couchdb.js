@@ -8,7 +8,9 @@
 //     $ BENCH_DOCS=25000 BENCH_SCENARIOS=doc_get BENCH_GET_RATE=10 k6 run k6_couchdb.js
 //   4) Run doc_get scenario with a particular rul and an extra header
 //     $ BENCH_URL=https://foo.example.com BENCH_SCENARIOS=doc_get BENCH_XHEADER=x-foo:bar ./k6 run k6_couchdb.js
-//
+//   5) Benchmark the / (welcome) endpoint for 60s @ 2k rps. This might be interesting to exclude the effect of
+//     of disk IO and db node CPU usage when say benchmarking the acceptor logic or a load balancer
+//     $ BENCH_DOCS=1 BENCH_DURATION=60s BENCH_SCENARIOS=welcome BENCH_WELCOME_RATE=2000 k6 run k6_couchdb.js
 
 import http from 'k6/http';
 import encoding from 'k6/encoding';
@@ -28,6 +30,7 @@ const DOCS           = env_num('DOCS', 100000);
 const DOC_SIZE       = env_num('DOC_SIZE', 256);
 const DURATION       = env_str('DURATION', '5m');
 // Rates for individual scenarios
+const WELCOME_RATE   = env_num('WELCOME_RATE', 1000);
 const GET_RATE       = env_num('GET_RATE', 1000);
 const INSERT_RATE    = env_num('INSERT_RATE', 100);
 const UPDATE_RATE    = env_num('UPDATE_RATE', 100);
@@ -46,6 +49,7 @@ const BATCH_SIZE     = env_num('BATCH_SIZE', 500);
 const DB_URL        = `${URL}/${DB}`;
 const HEADERS       = get_headers(XHEADER, USER, PASS);
 const SETUP_PAR     = {'headers': HEADERS, tags: {name: 'setup'}};
+const WELCOME_PAR   = {'headers': HEADERS, tags: {name: 'welcome'}};
 const GET_PAR       = {'headers': HEADERS, tags: {name: 'doc_get'}};
 const PUT_PAR       = {'headers': HEADERS, tags: {name: 'doc_put'}};
 const POST_PAR      = {'headers': HEADERS, tags: {name: 'doc_insert'}};
@@ -74,6 +78,7 @@ export const options = {
    // see the individual tagged requests times in the summary
    // but in principle these could be turned into a pass/fail test
    thresholds: {
+     'http_req_duration{name:welcome}'    : ['p(99)>=0'],
      'http_req_duration{name:doc_get}'    : ['p(99)>=0'],
      'http_req_duration{name:doc_insert}' : ['p(99)>=0'],
      'http_req_duration{name:doc_put}'    : ['p(99)>=0'],
@@ -122,6 +127,7 @@ export function teardown(data) {
 function scenarios() {
   let scenario_keys = SCENARIOS.split(',').map(k => k.trim());
   let scenarios_available = {
+    welcome    : {...SCENARIO_DEFAULTS, exec: 'welcome', rate: WELCOME_RATE},
     doc_get    : {...SCENARIO_DEFAULTS, exec: 'doc_get', rate: GET_RATE},
     doc_insert : {...SCENARIO_DEFAULTS, exec: 'doc_insert', rate: INSERT_RATE},
     doc_update : {...SCENARIO_DEFAULTS, exec: 'doc_update', rate: UPDATE_RATE},
@@ -135,6 +141,10 @@ function scenarios() {
     throw new Error(`Invalid scenarios: ${invalid.join(', ')}`);
   }
   return Object.fromEntries(scenario_keys.map(k => [k, scenarios_available[k]]));
+}
+
+export function welcome () {
+  http.get(`${DB_URL}`, WELCOME_PAR);
 }
 
 export function doc_get () {
