@@ -11,6 +11,8 @@
 //   5) Benchmark the / (welcome) endpoint for 60s @ 2k rps. This might be interesting to exclude the effect of
 //     of disk IO and db node CPU usage when say benchmarking the acceptor logic or a load balancer
 //     $ BENCH_DOCS=1 BENCH_DURATION=60s BENCH_SCENARIOS=welcome BENCH_WELCOME_RATE=2000 k6 run k6_couchdb.js
+//   6) Skip deleting the db at the end. This helps analyze the db files sizes after the benchmark.
+//     $ BECNH_TEARDOWN=0 BENCH_SCENARIOS=doc_get,doc_update,doc_insert ./k6 run k6_couchdb.js
 
 import http from 'k6/http';
 import encoding from 'k6/encoding';
@@ -38,6 +40,7 @@ const BULK_DOCS_RATE = env_num('BULK_DOCS_RATE', 2);
 const BULK_GET_RATE  = env_num('BULK_GET_RATE', 2);
 const ALL_DOCS_RATE  = env_num('ALL_DOCS_RATE', 1);
 const CHANGES_RATE   = env_num('CHANGES_RATE', 1);
+const TEARDOWN       = env_num('TEARDOWN', 1);
 const TAG            = env_str('TAG', '');
 // Default set of scenarios
 const SCENARIOS      = env_str('SCENARIOS', 'doc_get,doc_insert');
@@ -118,9 +121,11 @@ export function setup() {
 }
 
 export function teardown(data) {
-    let res = http.del(DB_URL, null, SETUP_PAR);
-    if (res.status != 200) {
-        throw new Error(`In teardown could not delete DB ${DB_URL} ${res.body}`);
+    if (TEARDOWN > 0) {
+      let res = http.del(DB_URL, null, SETUP_PAR);
+      if (res.status != 200) {
+          throw new Error(`In teardown could not delete DB ${DB_URL} ${res.body}`);
+      }
     }
 }
 
