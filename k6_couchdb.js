@@ -16,7 +16,7 @@
 
 import http from 'k6/http';
 import encoding from 'k6/encoding';
-import { sleep } from 'k6';
+import { check, sleep } from 'k6';
 import { randomString, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 
 // Parameters, defaults or from the environment
@@ -149,12 +149,14 @@ function scenarios() {
 }
 
 export function welcome () {
-  http.get(URL, WELCOME_PAR);
+  const res = http.get(URL, WELCOME_PAR);
+  check(res, {'welcome status is 200': r => r.status === 200});
 }
 
 export function doc_get () {
   const doc_id = fmt_doc_id(randomIntBetween(0, DOCS-1));
-  http.get(`${DB_URL}/${doc_id}`, GET_PAR);
+  const res = http.get(`${DB_URL}/${doc_id}`, GET_PAR);
+  check(res, {'doc_get status is 200': r => r.status === 200});
 }
 
 export function doc_update () {
@@ -166,12 +168,14 @@ export function doc_update () {
   const doc = res.json();
   delete doc['_id'];
   doc['data'] = randomString(DOC_SIZE);
-  http.put(`${DB_URL}/${doc_id}?rev=${doc._rev}`, JSON.stringify(doc), PUT_PAR);
+  const put_res = http.put(`${DB_URL}/${doc_id}?rev=${doc._rev}`, JSON.stringify(doc), PUT_PAR);
+  check(put_res, {'doc_update status is 201': r => r.status === 201});
 }
 
 export function doc_insert () {
   const doc = {'data': randomString(DOC_SIZE)};
-  http.post(`${DB_URL}`, JSON.stringify(doc), POST_PAR);
+  const res = http.post(`${DB_URL}`, JSON.stringify(doc), POST_PAR);
+  check(res, {'doc_insert status is 201': r => r.status === 201});
 }
 
 export function bulk_docs() {
@@ -180,7 +184,8 @@ export function bulk_docs() {
       docs_arr.push({'data': randomString(DOC_SIZE)});
   };
   const body = JSON.stringify({'docs': docs_arr});
-  http.post(`${DB_URL}/_bulk_docs?w=3`, body, BULK_DOCS_PAR);
+  const res = http.post(`${DB_URL}/_bulk_docs?w=3`, body, BULK_DOCS_PAR);
+  check(res, {'bulk_docs status is 201 or 202': r => r.status === 201 || r.status === 202});
 }
 
 export function bulk_get() {
@@ -189,15 +194,18 @@ export function bulk_get() {
       docs_arr.push({'id': fmt_doc_id(randomIntBetween(0, DOCS-1))});
   };
   const body = JSON.stringify({'docs': docs_arr});
-  http.post(`${DB_URL}/_bulk_get`, body, BULK_GET_PAR);
+  const res = http.post(`${DB_URL}/_bulk_get`, body, BULK_GET_PAR);
+  check(res, {'bulk_get status is 200': r => r.status === 200});
 }
 
 export function all_docs() {
-  http.get(`${DB_URL}/_all_docs?limit=${BATCH_SIZE}`, ALL_DOCS_PAR)
+  const res = http.get(`${DB_URL}/_all_docs?limit=${BATCH_SIZE}`, ALL_DOCS_PAR)
+  check(res, {'all_docs status is 200': r => r.status === 200});
 }
 
 export function changes() {
-  http.get(`${DB_URL}/_changes?limit=${BATCH_SIZE}`, CHANGES_PAR)
+  const res = http.get(`${DB_URL}/_changes?limit=${BATCH_SIZE}`, CHANGES_PAR)
+  check(res, {'changes status is 200': r => r.status === 200});
 }
 
 /// End of callback functions
