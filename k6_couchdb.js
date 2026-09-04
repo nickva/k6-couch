@@ -27,31 +27,31 @@ const URL            = env_str('URL', 'http://localhost:15984');
 const USER           = env_str('USER', 'adm');
 const PASS           = env_str('PASS', 'pass');
 const DB             = env_str('DB', 'bench_db');
-const Q              = env_str('Q', '4');
-const DOCS           = env_num('DOCS', 100000);
-const DOC_SIZE       = env_num('DOC_SIZE', 256);
+const Q              = env_num('Q', 4, 1);
+const DOCS           = env_num('DOCS', 100000, 0);
+const DOC_SIZE       = env_num('DOC_SIZE', 256, 0);
 const DURATION       = env_str('DURATION', '5m');
 // Rates for individual scenarios
-const WELCOME_RATE   = env_num('WELCOME_RATE', 1000);
-const GET_RATE       = env_num('GET_RATE', 1000);
-const INSERT_RATE    = env_num('INSERT_RATE', 100);
-const UPDATE_RATE    = env_num('UPDATE_RATE', 100);
-const BULK_DOCS_RATE = env_num('BULK_DOCS_RATE', 2);
-const BULK_GET_RATE  = env_num('BULK_GET_RATE', 2);
-const ALL_DOCS_RATE  = env_num('ALL_DOCS_RATE', 1);
-const CHANGES_RATE   = env_num('CHANGES_RATE', 1);
-const TEARDOWN       = env_num('TEARDOWN', 1);
+const WELCOME_RATE   = env_num('WELCOME_RATE', 1000, 1);
+const GET_RATE       = env_num('GET_RATE', 1000, 1);
+const INSERT_RATE    = env_num('INSERT_RATE', 100, 1);
+const UPDATE_RATE    = env_num('UPDATE_RATE', 100, 1);
+const BULK_DOCS_RATE = env_num('BULK_DOCS_RATE', 2, 1);
+const BULK_GET_RATE  = env_num('BULK_GET_RATE', 2, 1);
+const ALL_DOCS_RATE  = env_num('ALL_DOCS_RATE', 1, 1);
+const CHANGES_RATE   = env_num('CHANGES_RATE', 1, 1);
+const TEARDOWN       = env_num('TEARDOWN', 1, 0, 1);
 const TAG            = env_str('TAG', '');
 // Default set of scenarios
 const SCENARIOS      = env_str('SCENARIOS', 'doc_get,doc_insert');
 const XHEADER        = env_str('XHEADER', '');
-const BATCH_SIZE     = env_num('BATCH_SIZE', 500);
+const BATCH_SIZE     = env_num('BATCH_SIZE', 500, 1);
 
 // Derived params
 
 const DB_URL        = `${URL}/${DB}`;
 const HEADERS       = get_headers(XHEADER, USER, PASS);
-const SETUP_PAR     = {'headers': HEADERS, tags: {name: 'setup'}};
+const SETUP_PAR     = {'headers': HEADERS, tags: {name: 'setup'}, responseType: 'text'};
 const WELCOME_PAR   = {'headers': HEADERS, tags: {name: 'welcome'}};
 const GET_PAR        = {'headers': HEADERS, tags: {name: 'doc_get'}};
 const UPDATE_GET_PAR = {'headers': HEADERS, tags: {name: 'doc_get'}, responseType: 'text'};
@@ -131,6 +131,13 @@ export function teardown(data) {
 
 function scenarios() {
   const scenario_keys = SCENARIOS.split(',').map(k => k.trim());
+  if (scenario_keys.some(k => !k)) {
+    throw new Error('BENCH_SCENARIOS must be a comma-separated list of scenario names');
+  }
+  const duplicates = scenario_keys.filter((k, i) => scenario_keys.indexOf(k) !== i);
+  if (duplicates.length > 0) {
+    throw new Error(`Duplicate scenarios: ${[...new Set(duplicates)].join(', ')}`);
+  }
   const scenarios_available = {
     welcome    : {...SCENARIO_DEFAULTS, exec: 'welcome', rate: WELCOME_RATE},
     doc_get    : {...SCENARIO_DEFAULTS, exec: 'doc_get', rate: GET_RATE},
@@ -144,6 +151,10 @@ function scenarios() {
   const invalid = scenario_keys.filter(k => !scenarios_available[k]);
   if (invalid.length > 0) {
     throw new Error(`Invalid scenarios: ${invalid.join(', ')}`);
+  }
+  const requires_docs = scenario_keys.some(k => ['doc_get', 'doc_update', 'bulk_get'].includes(k));
+  if (requires_docs && DOCS === 0) {
+    throw new Error('BENCH_DOCS must be greater than 0 for doc_get, doc_update, and bulk_get scenarios');
   }
   return Object.fromEntries(scenario_keys.map(k => [k, scenarios_available[k]]));
 }
@@ -217,14 +228,13 @@ function env_str(name, default_val) {
   return __ENV[name] ? __ENV[name] : default_val;
 }
 
-function env_num(name, default_val) {
+function env_num(name, default_val, min, max = Infinity) {
   name = 'BENCH_' + name;
-  if (!__ENV[name]) {
-    return default_val;
-  }
-  const num = Number(__ENV[name]);
-  if (Number.isNaN(num)) {
-    throw new Error(`Invalid numeric env var ${name}=${__ENV[name]}`);
+  const value = __ENV[name] === undefined ? default_val : __ENV[name];
+  const num = Number(value);
+  if (value === '' || !Number.isFinite(num) || !Number.isInteger(num) || num < min || num > max) {
+    const range = max === Infinity ? `greater than or equal to ${min}` : `between ${min} and ${max}`;
+    throw new Error(`Invalid numeric env var ${name}=${value}; expected an integer ${range}`);
   }
   return num;
 }
@@ -267,7 +277,7 @@ function insert_batch(doc_id, count, size) {
   // background load
   const res = http.post(`${DB_URL}/_bulk_docs?w=3`, JSON.stringify(req), SETUP_PAR);
   if (res.status != 201 && res.status != 202) {
-    throw new Error(`Failed _bulk_docs ${res.status}`);
+    throw new Error(`Failed _bulk_docs: status=${res.status}, body=${res.body}`);
   }
   return doc_id;
 }
