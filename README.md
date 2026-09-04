@@ -39,7 +39,7 @@ const BATCH_SIZE     = env_num('BATCH_SIZE', 500);
 
 A few examples:
 
-  *  Run all secenarios for 30sec with given user/pass:
+  * Run all scenarios for 30 sec with given user/pass:
   ```
   $ BENCH_DURATION=30s BENCH_USER=adm BENCH_PASS=pass k6 run k6_couchdb.js
   ```
@@ -54,7 +54,7 @@ A few examples:
   $ BENCH_DOCS=25000 BENCH_SCENARIOS=doc_get BENCH_GET_RATE=10 k6 run k6_couchdb.js
   ```
   
-  * Run doc_get scenario with a particular url and an extra header
+  * Run doc_get scenario with a particular URL and an extra header
   ```
   $ BENCH_URL=https://foo.example.com BENCH_SCENARIOS=doc_get BENCH_XHEADER=x-foo:bar ./k6 run k6_couchdb.js
   ```

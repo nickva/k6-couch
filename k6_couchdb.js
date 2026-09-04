@@ -1,18 +1,18 @@
 //
 // Examples:
-//   1) Run all secenarios for 30sec with given user/pass:
+//   1) Run all scenarios for 30 sec with given user/pass:
 //     $ BENCH_DURATION=30s BENCH_USER=adm BENCH_PASS=pass k6 run k6_couchdb.js
 //   2) Run just doc_update
 //     $ BENCH_SCENARIOS=doc_update k6 run k6_couchdb.js
 //   3) Run just doc_get at 10 rps, starting with 25k docs of 64KB each:
 //     $ BENCH_DOCS=25000 BENCH_SCENARIOS=doc_get BENCH_GET_RATE=10 k6 run k6_couchdb.js
-//   4) Run doc_get scenario with a particular rul and an extra header
+//   4) Run doc_get scenario with a particular URL and an extra header
 //     $ BENCH_URL=https://foo.example.com BENCH_SCENARIOS=doc_get BENCH_XHEADER=x-foo:bar ./k6 run k6_couchdb.js
-//   5) Benchmark the / (welcome) endpoint for 60s @ 2k rps. This might be interesting to exclude the effect of
-//     of disk IO and db node CPU usage when say benchmarking the acceptor logic or a load balancer
+//   5) Benchmark the / (welcome) endpoint for 60s @ 2k rps. This might be interesting to exclude the effect
+//     of disk IO and DB node CPU usage when, say, benchmarking the acceptor logic or a load balancer
 //     $ BENCH_DOCS=1 BENCH_DURATION=60s BENCH_SCENARIOS=welcome BENCH_WELCOME_RATE=2000 k6 run k6_couchdb.js
 //   6) Skip deleting the db at the end. This helps analyze the db files sizes after the benchmark.
-//     $ BECNH_TEARDOWN=0 BENCH_SCENARIOS=doc_get,doc_update,doc_insert ./k6 run k6_couchdb.js
+//     $ BENCH_TEARDOWN=0 BENCH_SCENARIOS=doc_get,doc_update,doc_insert ./k6 run k6_couchdb.js
 
 import http from 'k6/http';
 import encoding from 'k6/encoding';
@@ -20,7 +20,7 @@ import { sleep } from 'k6';
 import { randomString, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
 
 // Parameters, defaults or from the environment
-// Note: environemnt variables are prefixed with "BENCH_"
+// Note: environment variables are prefixed with "BENCH_"
 //
 
 const URL            = env_str('URL', 'http://localhost:15984');
@@ -53,8 +53,9 @@ const DB_URL        = `${URL}/${DB}`;
 const HEADERS       = get_headers(XHEADER, USER, PASS);
 const SETUP_PAR     = {'headers': HEADERS, tags: {name: 'setup'}};
 const WELCOME_PAR   = {'headers': HEADERS, tags: {name: 'welcome'}};
-const GET_PAR       = {'headers': HEADERS, tags: {name: 'doc_get'}};
-const PUT_PAR       = {'headers': HEADERS, tags: {name: 'doc_put'}};
+const GET_PAR        = {'headers': HEADERS, tags: {name: 'doc_get'}};
+const UPDATE_GET_PAR = {'headers': HEADERS, tags: {name: 'doc_get'}, responseType: 'text'};
+const PUT_PAR        = {'headers': HEADERS, tags: {name: 'doc_put'}};
 const POST_PAR      = {'headers': HEADERS, tags: {name: 'doc_insert'}};
 const BULK_DOCS_PAR = {'headers': HEADERS, tags: {name: 'bulk_docs'}};
 const BULK_GET_PAR  = {'headers': HEADERS, tags: {name: 'bulk_get'}};
@@ -73,9 +74,8 @@ const SCENARIO_DEFAULTS = {
 
 export const options = {
    scenarios: scenarios(),
-   // In all scenarios except doc_update we don't really
-   // need to look at the doc body, so we can discard them
-   discardResponseBodies: !SCENARIOS.includes('doc_update'),
+   // Discard response bodies by default. doc_update overrides this for its GET request.
+   discardResponseBodies: true,
    setupTimeout: '60m',
    // These are bogus, always passing thresholds just so we can
    // see the individual tagged requests times in the summary
@@ -122,7 +122,7 @@ export function setup() {
 
 export function teardown(data) {
     if (TEARDOWN > 0) {
-      let res = http.del(DB_URL, null, SETUP_PAR);
+      const res = http.del(DB_URL, null, SETUP_PAR);
       if (res.status != 200) {
           throw new Error(`In teardown could not delete DB ${DB_URL} ${res.body}`);
       }
@@ -130,8 +130,8 @@ export function teardown(data) {
 }
 
 function scenarios() {
-  let scenario_keys = SCENARIOS.split(',').map(k => k.trim());
-  let scenarios_available = {
+  const scenario_keys = SCENARIOS.split(',').map(k => k.trim());
+  const scenarios_available = {
     welcome    : {...SCENARIO_DEFAULTS, exec: 'welcome', rate: WELCOME_RATE},
     doc_get    : {...SCENARIO_DEFAULTS, exec: 'doc_get', rate: GET_RATE},
     doc_insert : {...SCENARIO_DEFAULTS, exec: 'doc_insert', rate: INSERT_RATE},
@@ -141,7 +141,7 @@ function scenarios() {
     all_docs   : {...SCENARIO_DEFAULTS, exec: 'all_docs',rate: ALL_DOCS_RATE},
     changes    : {...SCENARIO_DEFAULTS, exec: 'changes', rate: CHANGES_RATE}
   };
-  let invalid = scenario_keys.filter(k => !scenarios_available[k]);
+  const invalid = scenario_keys.filter(k => !scenarios_available[k]);
   if (invalid.length > 0) {
     throw new Error(`Invalid scenarios: ${invalid.join(', ')}`);
   }
@@ -149,46 +149,46 @@ function scenarios() {
 }
 
 export function welcome () {
-  http.get(`${DB_URL}`, WELCOME_PAR);
+  http.get(URL, WELCOME_PAR);
 }
 
 export function doc_get () {
-  let doc_id = fmt_doc_id(randomIntBetween(0, DOCS-1));
+  const doc_id = fmt_doc_id(randomIntBetween(0, DOCS-1));
   http.get(`${DB_URL}/${doc_id}`, GET_PAR);
 }
 
 export function doc_update () {
-  let doc_id = fmt_doc_id(randomIntBetween(0, DOCS-1));
-  let res = http.get(`${DB_URL}/${doc_id}`, GET_PAR);
+  const doc_id = fmt_doc_id(randomIntBetween(0, DOCS-1));
+  const res = http.get(`${DB_URL}/${doc_id}`, UPDATE_GET_PAR);
   if (res.status != 200) {
       throw new Error(`Got error ${res.status} getting document ${doc_id}`);
   };
-  let doc = res.json();
+  const doc = res.json();
   delete doc['_id'];
   doc['data'] = randomString(DOC_SIZE);
   http.put(`${DB_URL}/${doc_id}?rev=${doc._rev}`, JSON.stringify(doc), PUT_PAR);
 }
 
 export function doc_insert () {
-  let doc = {'data': randomString(DOC_SIZE)};
+  const doc = {'data': randomString(DOC_SIZE)};
   http.post(`${DB_URL}`, JSON.stringify(doc), POST_PAR);
 }
 
 export function bulk_docs() {
-  let docs_arr = [];
+  const docs_arr = [];
   for(let i=0; i<BATCH_SIZE; i++){
       docs_arr.push({'data': randomString(DOC_SIZE)});
   };
-  let body = JSON.stringify({'docs': docs_arr});
+  const body = JSON.stringify({'docs': docs_arr});
   http.post(`${DB_URL}/_bulk_docs?w=3`, body, BULK_DOCS_PAR);
 }
 
 export function bulk_get() {
-  let docs_arr = [];
+  const docs_arr = [];
   for(let i=0; i<BATCH_SIZE; i++){
       docs_arr.push({'id': fmt_doc_id(randomIntBetween(0, DOCS-1))});
   };
-  let body = JSON.stringify({'docs': docs_arr});
+  const body = JSON.stringify({'docs': docs_arr});
   http.post(`${DB_URL}/_bulk_get`, body, BULK_GET_PAR);
 }
 
@@ -222,8 +222,8 @@ function env_num(name, default_val) {
 }
 
 function get_headers(xtra_header, user, pass) {
-    let b64 = encoding.b64encode(`${user}:${pass}`);
-    let xheader = parse_header(xtra_header);
+    const b64 = encoding.b64encode(`${user}:${pass}`);
+    const xheader = parse_header(xtra_header);
     return {
         'authorization': `Basic ${b64}`,
         'content-type':'application/json',
@@ -232,33 +232,32 @@ function get_headers(xtra_header, user, pass) {
 };
 
 function parse_header(header_str) {
-  let [name, ...rest] = header_str.split(":");
-  let val = rest.join(":");
+  const [name, ...rest] = header_str.split(":");
+  const val = rest.join(":");
   return name ? {[name]: val} : {};
 }
 
 function insert_docs(num, bsize, dsize) {
   let doc_id = 0;
-  let batches = Math.trunc(num / bsize);
+  const batches = Math.trunc(num / bsize);
   for(let i=0; i<batches; i++) {
       doc_id = insert_batch(doc_id, bsize, dsize)
   };
-  let remaining = num - (batches * bsize);
-  return insert_batch(doc_id, remaining, dsize);
+  const remaining = num - (batches * bsize);
+  return remaining > 0 ? insert_batch(doc_id, remaining, dsize) : doc_id;
 }
 
 function insert_batch(doc_id, count, size) {
-  let docs_arr = [];
-  let doc;
+  const docs_arr = [];
   for(let i=0; i<count; i++) {
-      doc = {'_id': fmt_doc_id(doc_id), 'data': randomString(size)};
+      const doc = {'_id': fmt_doc_id(doc_id), 'data': randomString(size)};
       docs_arr.push(doc);
       doc_id ++;
   };
-  let req = {'docs': docs_arr};
+  const req = {'docs': docs_arr};
   // Use w=3 to avoid generating less of an internal replication
   // background load
-  let res = http.post(`${DB_URL}/_bulk_docs?w=3`, JSON.stringify(req), SETUP_PAR);
+  const res = http.post(`${DB_URL}/_bulk_docs?w=3`, JSON.stringify(req), SETUP_PAR);
   if (res.status != 201 && res.status != 202) {
     throw new Error(`Failed _bulk_docs ${res.status}`);
   }
@@ -266,7 +265,7 @@ function insert_batch(doc_id, count, size) {
 }
 
 function fmt_doc_id(n){
-   // make the length 16 bytes (32 chars) to be the same
+   // make the length 32 bytes (32 chars) to be the same
    // size as a uuid for the case when we're inserting
    // random docs with a post {} request
    return String(n).padStart(32, '0');
